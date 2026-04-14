@@ -88,9 +88,11 @@ private:
         f->close();
     }
 
-    void runProgram() {
+    u64 runProgram() {
+        u64 operations = 0;
         for (u32 prog_loc = 0; prog_loc < program.size(); ++prog_loc) {
             const Op op = program[prog_loc];
+            operations += 1;
 
             switch (op.kind) {
                 case OP_LEFT:
@@ -135,6 +137,8 @@ private:
                     break;
             }
         }
+
+        return operations;
     }
 
 public:
@@ -143,9 +147,9 @@ public:
         f->seekg(0, std::ios::beg);
     }
 
-    void run() {
+    u64 run() {
         prepareProgram();
-        runProgram();
+        return runProgram();
     }
 };
 
@@ -165,8 +169,9 @@ int main(int argc, char *argv[]) {
 
     Machine mach(&f);
     Timer t;
-    mach.run();
+    u64 operations = mach.run();
     double ms = t.elapsed_ms();
-    println("Time elapsed {} ms", ms);
+    println("\nTime elapsed {} ms", ms);
+    println("Number of operations {}", operations);
     return 0;
 }
