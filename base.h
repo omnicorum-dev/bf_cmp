@@ -154,8 +154,8 @@ namespace omni::basic {
 
     template<typename... Args>
     void println(std::ostream& os, const std::string& fmt, Args... args) {
-        fprint_impl(std::cout, fmt, 0, args...);
-        std::cout << std::endl;
+        fprint_impl(os, fmt, 0, args...);
+        os << std::endl;
     }
 
     template<typename... Args>
