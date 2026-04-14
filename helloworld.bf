@@ -8,6 +8,7 @@
   loop and the commands it contains are ignored because the current cell
   defaults to a value of 0; the 0 value causes this loop to be skipped.
 ]
+
 ++++++++                Set Cell #0 to 8
 [
     >++++               Add 4 to Cell #1; this will always set Cell #1 to 4

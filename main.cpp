@@ -1,141 +1,139 @@
-#include <iostream>
-#define DISABLE_TRACE
+//
+// Created by Nico Russo on 4/14/26.
+//
+
 #include "base.h"
-#include <fstream>
 
 using namespace omni;
 using std::string;
 
-enum OpCode {
-    PTR_L,
-    PTR_R,
-    INC,
-    DEC,
-    PRNT,
-    INPT,
-    LOOP_S,
-    LOOP_E,
-    COMMENT,
+enum OpKind {
+    OP_LEFT = '<',
+    OP_RIGHT = '>',
+    OP_INC = '+',
+    OP_DEC = '-',
+    OP_OUT = '.',
+    OP_IN = ',',
+    OP_LOOP_S = '[',
+    OP_LOOP_E = ']',
 };
 
-OpCode charToOpCode (const char c) {
-    switch (c) {
-        case '<':
-            return PTR_L;
-        case '>':
-            return PTR_R;
-        case '+':
-            return INC;
-        case '-':
-            return DEC;
-        case '.':
-            return PRNT;
-        case ',':
-            return INPT;
-        case '[':
-            return LOOP_S;
-        case ']':
-            return LOOP_E;
-        default:
-            return COMMENT;
+struct Op {
+    OpKind kind;
+    u32 operand;
+
+    friend std::ostream& operator<<(std::ostream& os, const Op& v) {
+        return os << (char)v.kind << " (" << v.operand << ")";
     }
-}
+};
 
 class Machine {
 private:
     std::array<u8, 2048> memory = {};
     u32 ptr = 0;
-    u32 code_loc = 0;
-    std::vector<u32> jumpTable = {};
-    std::vector<char> code = {};
+
+
+    std::vector<Op> program = {};
+
     std::ifstream* f;
 
-    void processCharacter(const char c) {
-        const OpCode opcode = charToOpCode (c);
-        switch (opcode) {
-            case PTR_L:
-                LOG_TRACE("<");
-                if (ptr == 0) {
-                    ptr = memory.size() - 1;
-                } else {
-                    ptr -= 1;
-                }
-                break;
-            case PTR_R:
-                LOG_TRACE(">");
-                if (ptr == memory.size() - 1) {
-                    ptr = 0;
-                } else {
-                    ptr += 1;
-                }
-                break;
-            case INC:
-                LOG_TRACE("+");
-                memory[ptr] += 1;
-                break;
-            case DEC:
-                LOG_TRACE("-");
-                memory[ptr] -= 1;
-                break;
-            case PRNT:
-                print("{}", static_cast<char>(memory[ptr]));
-                std::cout.flush();
-                break;
-            case INPT: {
-                const int ch = std::cin.get();
-                if (ch == EOF) {
-                    memory[ptr] = 0;
-                } else {
-                    memory[ptr] = static_cast<u8>(ch);
-                }
-            }
-                break;
-            case LOOP_S:
-                if (memory[ptr] == 0) {
-                    // jump to matching ]
-                    u32 bracket_level = 1;
-                    code_loc += 1;
-                    for (; code_loc < code.size(); ++code_loc) {
-                        if (code[code_loc] == '[') {
-                            ++bracket_level;
-                        } else if (code[code_loc] == ']') {
-                            --bracket_level;
-                        }
+    const char* valid = "<>+-.,[]";
 
-                        if (bracket_level == 0) {
-                            break;
-                        }
-                    }
-                } else {
-                    jumpTable.push_back(code_loc);
-                }
-                break;
-            case LOOP_E:
-                if (memory[ptr] != 0) {
-                    code_loc = jumpTable.back();
-                } else {
-                    jumpTable.pop_back();
-                }
-                break;
-            default:
-                return;
-        }
+    bool isBf (const char c) const {
+        return strchr(valid, c) != nullptr;
     }
 
-    void loadProgram() {
-        char ch;
+    void prepareProgram() {
+        std::stack<u32> jumpStack;
+        char ch = '\0';
+        char prev = '\0';
         while (f->get(ch)) {
-            if (ch == '<' || ch == '>' || ch == '+' || ch == '-' || ch == '.' || ch == ',' || ch == '[' || ch == ']') {
-                code.push_back(ch);
+            if (isBf(ch)) {
+                switch (ch) {
+                    case '>':
+                    case '<':
+                    case '+':
+                    case '-':
+                    case '.':
+                    case ',': {
+                        if (ch != prev) {
+                            Op op = {(OpKind)ch, 1 };
+                            program.emplace_back(op);
+                        } else {
+                            program.back().operand += 1;
+                        }
+                        prev = ch;
+                        break;
+                    }
+                    case '[': {
+                        Op op = {(OpKind)ch, (u32)(program.size()) };
+                        program.emplace_back(op);
+                        jumpStack.push((u32)(program.size()-1));
+                        prev = ch;
+                        break;
+                    }
+                    case ']': {
+                        Op op = {(OpKind)ch, jumpStack.top() };
+                        program[jumpStack.top()].operand = program.size();
+                        jumpStack.pop();
+                        program.emplace_back(op);
+                        prev = ch;
+                        break;
+                    }
+                    default:
+                        LOG_ERROR("Unknown command");
+                }
             }
         }
         f->close();
     }
 
     void runProgram() {
-        for (; code_loc < code.size(); ++code_loc) {
-            //print("{}", code[code_loc]);
-            processCharacter(code[code_loc]);
+        for (u32 prog_loc = 0; prog_loc < program.size(); ++prog_loc) {
+            const Op op = program[prog_loc];
+
+            switch (op.kind) {
+                case OP_LEFT:
+                    ptr = (ptr + memory.size() - (op.operand % memory.size())) % memory.size();
+                    break;
+                case OP_RIGHT:
+                    ptr = (ptr + op.operand) % memory.size();
+                    break;
+                case OP_INC:
+                    memory[ptr] += op.operand;
+                    break;
+                case OP_DEC:
+                    memory[ptr] -= op.operand;
+                    break;
+                case OP_OUT: {
+                    for (u32 i = 0; i < op.operand; ++i) {
+                        print("{}", static_cast<char>(memory[ptr]));
+                        std::cout.flush();
+                    }
+                    break;
+                }
+                case OP_IN: {
+                    for (u32 i = 0; i < op.operand; ++i) {
+                        const int ch = std::cin.get();
+                        if (ch == EOF) {
+                            memory[ptr] = 0;
+                        } else {
+                            memory[ptr] = (u8)ch;
+                        }
+                    }
+                    break;
+                }
+                case OP_LOOP_S:
+                    if (memory[ptr] == 0) {
+                        prog_loc = op.operand;
+                    }
+                    break;
+                case OP_LOOP_E:
+                    if (memory[ptr] != 0) {
+                        prog_loc = op.operand;
+                    }
+                    break;
+            }
         }
     }
 
@@ -146,7 +144,7 @@ public:
     }
 
     void run() {
-        loadProgram();
+        prepareProgram();
         runProgram();
     }
 };
@@ -165,9 +163,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    Machine machine(&f);
+    Machine mach(&f);
     Timer t;
-    machine.run();
+    mach.run();
     double ms = t.elapsed_ms();
     println("Time elapsed {} ms", ms);
     return 0;

@@ -512,7 +512,7 @@ namespace omni::basic {
                 LOG_WARN("Failed to open file '{}'", filepath);
             }
             WriteHeader();
-            current_session = new BenchmarkSession(name);
+            current_session = new BenchmarkSession{name};
         }
 
         void EndSession() {
