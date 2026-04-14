@@ -7,6 +7,7 @@
 
 #include <complex>
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <stdexcept>
 
@@ -442,6 +443,182 @@ namespace omni {
 
         bool operator==(const Pair& p) const {
             return a == p.a;
+        }
+    };
+}
+
+
+// ========================================================
+// BENCHMARKING AND PROFILING
+// ========================================================
+/* HOW TO USE
+omni::basic::Timer t;
+// ... do stuff ...
+double ms = t.elapsed_ms();
+double sec = t.elapsed_sec();
+t.reset(); // restart if needed
+
+{
+    omni::basic::ScopedTimer t("my operation");
+    // ... do stuff ...
+} // prints: "my operation took 3.142 ms"
+
+
+#define PROFILING 1
+
+omni::basic::Benchmark::Get().BeginSession("my session", "results.json");
+
+// use the macros inside any functions you want to trace:
+void someFunction() {
+    PROFILE_FUNCTION();   // traces the whole function by name
+    // ...
+}
+
+void someFunction() {
+    PROFILE_SCOPE("my label");  // trace with a custom name
+    // ...
+}
+
+omni::basic::Benchmark::Get().EndSession();
+ */
+namespace omni::basic {
+    struct ProfileResult {
+        std::string name;
+        i64 start, end;
+    };
+
+    struct BenchmarkSession {
+        std::string name;
+    };
+
+    class Benchmark {
+    private:
+        BenchmarkSession* current_session;
+        std::ofstream output_stream;
+        i32 profile_count;
+
+        //
+        std::chrono::time_point<std::chrono::high_resolution_clock> session_start_time;
+
+    public:
+        Benchmark() : current_session(nullptr), profile_count(0) {}
+
+        void BeginSession(const std::string& name, const std::string& filepath = "results.json") {
+            //
+            session_start_time = std::chrono::high_resolution_clock::now();
+
+            output_stream.open(filepath);
+            if (!output_stream.is_open()) {
+                LOG_WARN("Failed to open file '{}'", filepath);
+            }
+            WriteHeader();
+            current_session = new BenchmarkSession(name);
+        }
+
+        void EndSession() {
+            WriteFooter();
+            output_stream.close();
+            delete current_session;
+            current_session = nullptr;
+            profile_count = 0;
+        }
+
+        i64 GetTimeSinceStartMicroseconds() const {
+            const auto now = std::chrono::high_resolution_clock::now();
+            return std::chrono::duration_cast<std::chrono::microseconds>(now - session_start_time).count();
+        }
+
+        void WriteProfile(const ProfileResult& result) {
+            if (profile_count++ > 0) {
+                output_stream << ",";
+            }
+
+            std::string name = result.name;
+            std::replace(name.begin(), name.end(), '"', '\'');
+
+            output_stream << "{";
+            output_stream << "\"cat\":\"function\",";
+            output_stream << "\"dur\":" << (result.end - result.start) << ',';
+            output_stream << "\"name\":\"" << name << "\",";
+            output_stream << "\"ph\":\"X\",";
+            output_stream << "\"pid\":0,";
+            output_stream << "\"tid\":0,";
+            output_stream << "\"ts\":" << result.start;
+            output_stream << "}";
+
+            output_stream.flush();
+        }
+
+        void WriteHeader() {
+            output_stream << "{\"otherData\": {},\"traceEvents\":[";
+            output_stream.flush();
+        }
+
+        void WriteFooter() {
+            output_stream << "]}";
+            output_stream.flush();
+        }
+
+        static Benchmark& Get() {
+            static Benchmark* instance = new Benchmark();
+            return *instance;
+        }
+    };
+
+    struct ScopedBenchmarkTimer {
+        const char* label;
+        //std::chrono::high_resolution_clock::time_point start;
+        i64 start;
+
+        explicit ScopedBenchmarkTimer(const char* label) : label(label), start(Benchmark::Get().GetTimeSinceStartMicroseconds()) {}
+
+        ~ScopedBenchmarkTimer() {
+
+            const i64 end = Benchmark::Get().GetTimeSinceStartMicroseconds();
+
+            Benchmark::Get().WriteProfile({label, start, end});
+        }
+    };
+
+//#define PROFILING 1
+#if PROFILING
+#define PROFILE_SCOPE(name) ScopedBenchmarkTimer timer##__LINE__(name)
+#define PROFILE_FUNCTION() PROFILE_SCOPE(__PRETTY_FUNCTION__)
+#else
+#define PROFILE_SCOPE(name)
+#define PROFILE_FUNCTION()
+#endif
+
+    struct ScopedTimer {
+        const char* label;
+        std::chrono::high_resolution_clock::time_point start;
+
+        explicit ScopedTimer(const char* label) : label(label), start(std::chrono::high_resolution_clock::now()) {}
+        ~ScopedTimer() {
+            const std::chrono::time_point<std::chrono::steady_clock> end = std::chrono::high_resolution_clock::now();
+            f64 ms = std::chrono::duration<double, std::milli>(end - start).count();
+            LOG_INFO("{} took {:.3f} ms", label, ms);
+        }
+    };
+
+    struct Timer {
+        using Clock = std::chrono::high_resolution_clock;
+        Clock::time_point start;
+
+        Timer() { reset(); }
+
+        void reset() {
+            start = Clock::now();
+        }
+
+        [[nodiscard]]
+        double elapsed_ms() const {
+            return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+        }
+
+        [[nodiscard]]
+        double elapsed_sec() const {
+            return std::chrono::duration<double>(Clock::now() - start).count();
         }
     };
 }
