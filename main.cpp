@@ -43,13 +43,11 @@ OpCode charToOpCode (const char c) {
 
 class Machine {
 private:
-
     std::array<u8, 2048> memory = {};
     u32 ptr = 0;
     u32 code_loc = 0;
     std::vector<u32> jumpTable = {};
     std::vector<char> code = {};
-
     std::ifstream* f;
 
     void processCharacter(const char c) {
@@ -142,7 +140,6 @@ private:
     }
 
 public:
-
     explicit Machine(std::ifstream* file) {
         f = file;
         f->seekg(0, std::ios::beg);
@@ -169,13 +166,9 @@ int main(int argc, char *argv[]) {
     }
 
     Machine machine(&f);
-
     Timer t;
-
     machine.run();
-
     double ms = t.elapsed_ms();
     println("Time elapsed {} ms", ms);
-
     return 0;
 }
