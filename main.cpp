@@ -29,7 +29,7 @@ struct Op {
 
 class Machine {
 private:
-    std::array<u8, 2048> memory = {};
+    std::array<u8, 65536> memory = {};
     u32 ptr = 0;
 
 
